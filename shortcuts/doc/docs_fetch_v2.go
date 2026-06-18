@@ -16,7 +16,7 @@ import (
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "doc-format", Desc: "content format", Hidden: true, Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "doc-format", Desc: "content format; im-markdown downgrades residual DocxXML fragments for IM messages", Hidden: true, Default: "xml", Enum: []string{"xml", "markdown", "im-markdown"}},
 		{Name: "detail", Desc: "export detail level: simple (read-only) | with-ids (block IDs for cross-referencing) | full (all attrs for editing)", Hidden: true, Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
 		{Name: "revision-id", Desc: "document revision (-1 = latest)", Hidden: true, Type: "int", Default: "-1"},
 		{Name: "scope", Desc: "partial read scope: outline | range | keyword | section (omit to read whole doc)", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
@@ -67,6 +67,9 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if isIMMarkdownFetch(runtime) {
+		applyFetchIMMarkdown(data, runtime.Str("doc"))
+	}
 
 	runtime.OutFormatRaw(data, nil, func(w io.Writer) {
 		if doc, ok := data["document"].(map[string]interface{}); ok {
@@ -80,7 +83,7 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format": runtime.Str("doc-format"),
+		"format": effectiveFetchFormat(runtime),
 	}
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v
@@ -112,6 +115,14 @@ func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	injectDocsScene(runtime, body)
 
 	return body
+}
+
+func effectiveFetchFormat(runtime *common.RuntimeContext) string {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	if format == "im-markdown" {
+		return "markdown"
+	}
+	return format
 }
 
 // buildReadOption 拼装 read_option JSON；full/空模式返回 nil，让服务端走默认全文路径。
